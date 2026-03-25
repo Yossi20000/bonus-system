@@ -30,7 +30,6 @@ router.get('/', (req, res) => {
     return { ...sale, items };
   });
   
-  // Filter by product if needed
   const filtered = product_id ? result.filter(s => s.items.some(i => String(i.product_id) === String(product_id))) : result;
   res.json(filtered);
 });
@@ -48,14 +47,35 @@ router.get('/summary', adminOnly, (req, res) => {
   const w = wheres.join(' AND ');
 
   let query;
+  // FIX: Use SUM(si.bonus_amount * si.quantity) instead of SUM(s.total_bonus) to avoid duplication when joining sale_items
   if (group_by === 'employee') {
-    query = `SELECT u.id as employee_id, u.name as employee_name, COUNT(DISTINCT s.id) as sale_count, SUM(s.total_bonus) as total_bonus, SUM(si.sell_price * si.quantity) as total_revenue FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id WHERE ${w} GROUP BY u.id ORDER BY total_bonus DESC`;
+    query = `SELECT u.id as employee_id, u.name as employee_name,
+      COUNT(DISTINCT s.id) as sale_count,
+      SUM(si.bonus_amount * si.quantity) as total_bonus,
+      SUM(si.sell_price * si.quantity) as total_revenue
+      FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id
+      WHERE ${w} GROUP BY u.id ORDER BY total_bonus DESC`;
   } else if (group_by === 'month') {
-    query = `SELECT u.name as employee_name, strftime('%Y-%m', s.sale_date) as period, COUNT(DISTINCT s.id) as sale_count, SUM(s.total_bonus) as total_bonus, SUM(si.sell_price * si.quantity) as total_revenue FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id WHERE ${w} GROUP BY u.id, period ORDER BY period DESC, total_bonus DESC`;
+    query = `SELECT u.name as employee_name, strftime('%Y-%m', s.sale_date) as period,
+      COUNT(DISTINCT s.id) as sale_count,
+      SUM(si.bonus_amount * si.quantity) as total_bonus,
+      SUM(si.sell_price * si.quantity) as total_revenue
+      FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id
+      WHERE ${w} GROUP BY u.id, period ORDER BY period DESC, total_bonus DESC`;
   } else if (group_by === 'day') {
-    query = `SELECT u.name as employee_name, s.sale_date as period, COUNT(DISTINCT s.id) as sale_count, SUM(s.total_bonus) as total_bonus, SUM(si.sell_price * si.quantity) as total_revenue FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id WHERE ${w} GROUP BY u.id, s.sale_date ORDER BY s.sale_date DESC, total_bonus DESC`;
+    query = `SELECT u.name as employee_name, s.sale_date as period,
+      COUNT(DISTINCT s.id) as sale_count,
+      SUM(si.bonus_amount * si.quantity) as total_bonus,
+      SUM(si.sell_price * si.quantity) as total_revenue
+      FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id
+      WHERE ${w} GROUP BY u.id, s.sale_date ORDER BY s.sale_date DESC, total_bonus DESC`;
   } else {
-    query = `SELECT p.name as product_name, p.id as product_id, SUM(si.quantity) as total_qty, SUM(si.bonus_amount * si.quantity) as total_bonus, SUM(si.sell_price * si.quantity) as total_revenue FROM sales s JOIN sale_items si ON si.sale_id = s.id JOIN products p ON si.product_id = p.id WHERE ${w} GROUP BY p.id ORDER BY total_bonus DESC`;
+    query = `SELECT p.name as product_name, p.id as product_id,
+      SUM(si.quantity) as total_qty,
+      SUM(si.bonus_amount * si.quantity) as total_bonus,
+      SUM(si.sell_price * si.quantity) as total_revenue
+      FROM sales s JOIN sale_items si ON si.sale_id = s.id JOIN products p ON si.product_id = p.id
+      WHERE ${w} GROUP BY p.id ORDER BY total_bonus DESC`;
   }
   res.json(all(query, params));
 });
@@ -98,13 +118,23 @@ router.get('/export', adminOnly, (req, res) => {
   const { type = 'sales' } = req.query;
   let data, sheetName;
   if (type === 'summary') {
-    data = all(`SELECT u.name as 'עובד', strftime('%Y-%m', s.sale_date) as 'חודש', COUNT(DISTINCT s.id) as 'מכירות', ROUND(SUM(s.total_bonus), 2) as 'סה"כ בונוס', ROUND(SUM(si.sell_price * si.quantity), 2) as 'הכנסות' FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id GROUP BY u.id, strftime('%Y-%m', s.sale_date) ORDER BY 'חודש' DESC, u.name`);
+    data = all(`SELECT u.name as 'עובד', strftime('%Y-%m', s.sale_date) as 'חודש',
+      COUNT(DISTINCT s.id) as 'מכירות',
+      ROUND(SUM(si.bonus_amount * si.quantity), 2) as 'סה"כ בונוס',
+      ROUND(SUM(si.sell_price * si.quantity), 2) as 'הכנסות'
+      FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id
+      GROUP BY u.id, strftime('%Y-%m', s.sale_date) ORDER BY 'חודש' DESC, u.name`);
     sheetName = 'סיכום';
   } else if (type === 'products') {
     data = all("SELECT name as 'שם מוצר', catalog_price as 'מחירון', sell_price as 'מחיר מכירה', bonus_type as 'סוג בונוס', bonus_value as 'ערך בונוס' FROM products WHERE active=1 ORDER BY name");
     sheetName = 'מוצרים';
   } else {
-    data = all(`SELECT s.sale_date as 'תאריך', u.name as 'עובד', s.customer_name as 'לקוח', p.name as 'מוצר', si.quantity as 'כמות', si.sell_price as 'מחיר מכירה', ROUND(si.bonus_amount * si.quantity, 2) as 'בונוס' FROM sales s JOIN users u ON s.employee_id = u.id JOIN sale_items si ON si.sale_id = s.id JOIN products p ON si.product_id = p.id ORDER BY s.sale_date DESC`);
+    data = all(`SELECT s.sale_date as 'תאריך', u.name as 'עובד', s.customer_name as 'לקוח',
+      p.name as 'מוצר', si.quantity as 'כמות', si.sell_price as 'מחיר מכירה',
+      ROUND(si.bonus_amount * si.quantity, 2) as 'בונוס'
+      FROM sales s JOIN users u ON s.employee_id = u.id
+      JOIN sale_items si ON si.sale_id = s.id JOIN products p ON si.product_id = p.id
+      ORDER BY s.sale_date DESC`);
     sheetName = 'מכירות';
   }
   const wb = XLSX.utils.book_new();

@@ -53,9 +53,6 @@ export default function Login() {
             {loading ? '...' : '🔐 כניסה'}
           </button>
         </form>
-        <p style={{ textAlign: 'center', color: 'var(--text2)', fontSize: '0.78rem', marginTop: '20px' }}>
-          מנהל ברירת מחדל: admin / admin123
-        </p>
       </div>
     </div>
   );
