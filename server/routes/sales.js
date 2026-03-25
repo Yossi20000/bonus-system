@@ -1,15 +1,11 @@
 const express = require('express');
 const XLSX = require('xlsx');
 const { get, all, run, insert } = require('../database');
-const { authMiddleware, adminOnly } = require('../middleware');
+const { authMiddleware, adminOnly } = require("../middleware");
+const { calculateBonus } = require("./products");
 const router = express.Router();
 router.use(authMiddleware);
 
-function calculateBonus(product, sellPrice) {
-  const price = sellPrice !== undefined ? parseFloat(sellPrice) : (product.sell_price || 0);
-  if (product.bonus_type === 'fixed') return product.bonus_value;
-  return Math.round(price * product.bonus_value / 100 * 100) / 100;
-}
 
 router.get('/', (req, res) => {
   const { employee_id, product_id, date_from, date_to, month, year } = req.query;
